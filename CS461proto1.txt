@@ -1,0 +1,73 @@
+import pandas as pd
+
+class Vertex:
+    def __init__(self, vertex_id, latitude, longitude):
+        self.id = vertex_id
+        # Lat and Long were added by me
+        self.latitude = latitude
+        self.longitude = longitude
+        self.neighbors = []
+
+
+    def add_neighbor(self, neighbor):
+        if neighbor not in self.neighbors:
+            self.neighbors.append(neighbor)
+
+
+class Graph:
+    def __init__(self):
+        self.vertices = {}
+
+
+    def add_vertex(self, vertex):
+        if isinstance(vertex, Vertex) and vertex.id not in self.vertices:
+            self.vertices[vertex.id] = vertex
+            return True
+        else:
+            return False
+
+
+    def add_edge(self, v1, v2):
+        if v1 in self.vertices and v2 in self.vertices:
+            self.vertices[v1].add_neighbor(v2)
+            self.vertices[v2].add_neighbor(v1)
+            return True
+        else:
+            return False
+
+
+    def get_vertices(self):
+        return self.vertices.keys()
+
+
+    def __iter__(self):
+        return iter(self.vertices.values())
+
+# Exit commands list
+exits = ["Quit", "quit", "QUIT", "Exit", "exit", "EXIT"]
+
+# User input and verification
+def get_check_input():
+  city_in = input()
+  city = input_check(city_in)
+  return city
+
+def input_check(city):
+  if city in exits:
+    return "Exit"
+  else: 
+    while city not in city_coor_list.city_name:
+      print("Invalid city.\n")
+      city = get_check_input()
+    return city
+
+city_coor_list = pd.read_csv('coordinates.csv')
+print(city_coor_list.shape)
+city_coor_list.head()
+
+# Now I need to iterate through the dataframe object and create 
+# vertex class objects for each city in the graph
+graph = Graph()
+for index, row in city_coor_list.iterrows():
+  vertex = Vertex(row['city_name'],row['latitude'],row['longitude'])  
+  graph.add_vertex(vertex)

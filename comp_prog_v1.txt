@@ -1,0 +1,353 @@
+!pip install haversine
+
+import pandas as pd
+import psutil
+import time
+import signal
+import heapq
+from collections import deque
+from haversine import haversine
+
+
+class Vertex:
+    def __init__(self, vertex_id, latitude, longitude):
+        self.id = vertex_id.replace("_", " ")  # Replace underscores with spaces
+        self.latitude = latitude
+        self.longitude = longitude
+        self.neighbors = []
+
+    def add_neighbor(self, neighbor):
+        if neighbor not in self.neighbors:
+            self.neighbors.append(neighbor)
+
+class Graph:
+    def __init__(self):
+        self.vertices = {}
+
+    def add_vertex(self, vertex):
+        if isinstance(vertex, Vertex) and vertex.id not in self.vertices:
+            self.vertices[vertex.id] = vertex
+            return True
+        return False
+
+    def add_edge(self, v1, v2):
+        v1 = v1.replace("_", " ")
+        v2 = v2.replace("_", " ")
+        if v1 in self.vertices and v2 in self.vertices:
+            self.vertices[v1].add_neighbor(v2)
+            self.vertices[v2].add_neighbor(v1)
+            return True
+        return False
+
+    def get_vertex(self, vertex_id):
+        return self.vertices.get(vertex_id)
+
+    def get_neighbors(self, vertex_id):
+        return self.vertices[vertex_id].neighbors
+
+    def __iter__(self):
+        return iter(self.vertices.values())
+
+# Distance calculation using haversine (from function_codes.txt)
+
+def calculate_total_distance(path, graph):
+    total_distance = 0
+    for i in range(len(path) - 1):
+        v1 = graph.get_vertex(path[i])
+        v2 = graph.get_vertex(path[i + 1])
+        coord1 = (v1.latitude, v1.longitude)
+        coord2 = (v2.latitude, v2.longitude)
+        total_distance += haversine(coord1, coord2)
+    return total_distance
+
+def heuristic(node, goal, graph):
+    node_vertex = graph.get_vertex(node)
+    goal_vertex = graph.get_vertex(goal)
+    coord1 = (node_vertex.latitude, node_vertex.longitude)
+    coord2 = (goal_vertex.latitude, goal_vertex.longitude)
+    return haversine(coord1, coord2)
+
+
+# Search Algorithms
+
+def bfs_search(graph, start, goal, timeout_duration=10):
+    signal.alarm(timeout_duration)
+    try:
+        start_time = time.time()
+        process = psutil.Process()
+
+        queue = deque([[start]])
+        visited = set()
+
+        while queue:
+            path = queue.popleft()
+            node = path[-1]
+            if node == goal:
+                end_time = time.time()
+                total_time = end_time - start_time
+                total_distance = calculate_total_distance(path, graph)
+                print(f"BFS Path: {path}")
+                print(f"Total Time: {total_time:.6f} seconds")
+                print(f"Total Distance: {total_distance:.2f} km")
+                return path
+            elif node not in visited:
+                for neighbor in graph.get_neighbors(node):
+                    new_path = list(path)
+                    new_path.append(neighbor)
+                    queue.append(new_path)
+                visited.add(node)
+
+        signal.alarm(0)
+    except TimeoutError:
+        print("BFS Search timed out")
+
+
+def dfs_search(graph, start, goal, timeout_duration=10):
+    signal.alarm(timeout_duration)
+    try:
+        start_time = time.time()
+        process = psutil.Process()
+
+        stack = [(start, [start])]
+        visited = set()
+
+        while stack:
+            (vertex, path) = stack.pop()
+            if vertex == goal:
+                end_time = time.time()
+                total_time = end_time - start_time
+                total_distance = calculate_total_distance(path, graph)
+                print(f"DFS Path: {path}")
+                print(f"Total Time: {total_time:.6f} seconds")
+                print(f"Total Distance: {total_distance:.2f} km")
+                return path
+            if vertex not in visited:
+                visited.add(vertex)
+                for neighbor in graph.get_neighbors(vertex):
+                    stack.append((neighbor, path + [neighbor]))
+
+        signal.alarm(0)
+    except TimeoutError:
+        print("DFS Search timed out")
+
+
+def dls(graph, node, goal, depth, path=None, visited=None):
+    if path is None:
+        path = [node]
+    if visited is None:
+        visited = set()
+
+    if node == goal:
+        return path  # Goal found, return the path
+
+    if depth == 0:
+        return None  # Reached depth limit, stop here
+
+    visited.add(node)
+
+    for neighbor in graph.get_neighbors(node):
+        if neighbor not in visited:
+            result = dls(graph, neighbor, goal, depth - 1, path + [neighbor], visited)
+            if result is not None:
+                return result
+
+    return None  # No path found at this depth
+
+
+def iddfs_search(graph, start, goal, max_depth=10, timeout_duration=10):
+    signal.alarm(timeout_duration)
+    try:
+        for depth in range(max_depth):
+            path = dls(graph, start, goal, depth)
+            if path:
+                total_distance = calculate_total_distance(path, graph)
+                print(f"IDDFS Path: {path}")
+                print(f"Total Distance: {total_distance:.2f} km")
+                return path
+        print("IDDFS Search failed")
+    except TimeoutError:
+        print("IDDFS Search timed out")
+
+
+def best_first_search(graph, start, goal, timeout_duration=10):
+    signal.alarm(timeout_duration)  # Set timeout for the search
+    try:
+        start_time = time.time()  # Track start time
+        process = psutil.Process()  # Get process info for memory usage
+
+        frontier = []  # Priority queue (min-heap)
+        heapq.heappush(frontier, (0, [start]))  # Push starting node with priority 0
+        visited = set()
+
+        while frontier:
+            _, path = heapq.heappop(frontier)  # Get node with lowest estimated cost
+            current_node = path[-1]  # Current node is the last one in the path
+
+            if current_node == goal:
+                end_time = time.time()  # Stop time
+                total_time = end_time - start_time  # Calculate elapsed time
+                total_distance = calculate_total_distance(path, graph)  # Calculate path distance
+
+                print(f"Best-First Path: {path}")
+                print(f"Total Time: {total_time:.6f} seconds")
+                print(f"Total Distance: {total_distance:.2f} km")
+                memory_usage = process.memory_info().rss / (1024 * 1024)  # Memory in MB
+                print(f"Memory Usage: {memory_usage:.2f} MB")
+                return path
+
+            if current_node not in visited:
+                visited.add(current_node)
+                for neighbor in graph.get_neighbors(current_node):
+                    new_path = list(path)  # Create a new path including the neighbor
+                    new_path.append(neighbor)
+                    priority = heuristic(neighbor, goal, graph)  # Use heuristic to estimate cost
+                    heapq.heappush(frontier, (priority, new_path))  # Add new path with priority
+
+        signal.alarm(0)  # Clear timeout
+
+    except TimeoutError:
+        print("Best-First Search timed out")
+
+
+def a_star_search(graph, start, goal, timeout_duration=10):
+    signal.alarm(timeout_duration)
+    try:
+        open_list = []
+        heapq.heappush(open_list, (0, [start]))
+        visited = set()
+
+        while open_list:
+            current_f, path = heapq.heappop(open_list)
+            node = path[-1]
+
+            if node == goal:
+                total_distance = calculate_total_distance(path, graph)
+                print(f"A* Path: {path}")
+                print(f"Total Distance: {total_distance:.2f} km")
+                return path
+
+            if node not in visited:
+                for neighbor in graph.get_neighbors(node):
+                    new_path = list(path)
+                    new_path.append(neighbor)
+                    heapq.heappush(open_list, (current_f + haversine_distance(node, neighbor, graph), new_path))
+                visited.add(node)
+
+        signal.alarm(0)
+    except TimeoutError:
+        print("A* Search timed out")
+
+
+# Build the Graph from Files
+
+city_coor_list = pd.read_csv('coordinates.csv')
+
+# Now I need to iterate through the dataframe object and create
+# vertex class objects for each city in the graph
+graph = Graph()
+for index, row in city_coor_list.iterrows():
+  vertex = Vertex(row['city_name'],row['latitude'],row['longitude'])
+  graph.add_vertex(vertex)
+
+# Now I need to import the edge pairs from the .txt file and
+# add them as edges to the graph structure (from ChatGPT)
+
+# Load adjacency pairs from text file
+with open('Adjacencies.txt', 'r') as file:
+    adjacency_data = file.readlines()
+
+# Add edges based on adjacency list
+for line in adjacency_data:
+    cities = line.strip().split()
+    if len(cities) == 2:
+        city1, city2 = cities
+        graph.add_edge(city1, city2)
+
+# Example: print vertices and their neighbors
+for vertex in graph:
+    print(f"City: {vertex.id}; Coordinates: {vertex.latitude},{vertex.longitude}; Neighbors: {vertex.neighbors}")
+
+
+# User Input and Menu Functions
+
+# Exit commands list
+exits = ["Quit", "quit", "QUIT", "Exit", "exit", "EXIT"]
+
+# User input and verification
+def get_check_input():
+  city_in = input()
+  city = input_check(city_in)
+  return city
+
+def input_check(city): # modded with assist from ChatGPT
+  if city in exits:
+    return "Exit"
+  else:
+    while city not in city_coor_list['city_name'].values:
+      print("Invalid city.\n")
+      city = input("Enter city name: ")
+      if city in exits:  # This replaced a recursion call
+        return "Exit"
+    return city
+
+
+def directions():
+  print("Enter the name of the starting city:\n" + "\ttype Quit to exit:\n")
+  city_1 = get_check_input()
+  if city_1 == "Exit":
+    print("Goodbye")
+    farewell = True
+  else:
+    print("You're starting at the city of " + city_1)
+
+  if farewell == False:
+    print("Enter the name of the ending city:\n" + "\ttype Quit to exit:\n")
+    city_2 = get_check_input()
+    if city_2 == "Exit":
+      print("Goodbye")
+      farewell = True
+    else: print("You're ending at the city of " + city_2)
+  else: city_2 = "Exit"
+  return city_1, city_2
+
+def search_method(city_1, city_2):
+  print("What search method would you like to use?\n\t1)Breadth-First\n\t2)Depth-First\n\t3)Iterative Deepening DFS\n\t4)Best-First\n\t5)A*star")
+  print("6) Choose New Cities")
+  print("Type Quit to exit")
+  choice = input()
+  if choice in exits:
+    print("Goodbye")
+    farewell = True
+  elif choice == "1":
+    print("Breadth-First Search")
+    bfs_search(graph, city_1, city_2)
+  elif choice == "2":
+    print("Depth-First Search")
+    dfs_search(graph, city_1, city_2)
+  elif choice == "3":
+    print("Iterative Deepening DFS")
+    # There is an option for setting max depth, using default == 10.
+    iddfs_search(graph, city_1, city_2) 
+  elif choice == "4":
+    print("Best-First Search")
+    best_first_search(graph, city_1, city_2)
+  elif choice == "5":
+    print("A*star")
+    a_star_search(graph, city_1, city_2)
+  elif choice == "6"
+    print("Choose New Cities")
+  else:
+    print("Invalid choice\nPlease enter a valid choice")
+    choice = input()
+  return choice
+
+# Execution Loops
+
+# Here is the initialization of the process.
+
+farewell = False
+while farewell == False:
+  method = "0"
+  city_1, city_2 = directions()
+  while != farewell and method != "6":
+    method = search_method(city_1, city_2)

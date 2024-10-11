@@ -1,0 +1,288 @@
+!pip install haversine
+
+import pandas as pd
+from collections import deque, defaultdict
+from queue import PriorityQueue
+import math
+import heapq
+import time
+import signal
+import psutil
+from haversine import haversine
+
+The below classes come from an article titled "Graph Implementations in Python".
+
+class Vertex:
+    def __init__(self, vertex_id, latitude, longitude):
+        self.id = vertex_id.replace("_", " ")  # Replace underscores with spaces (from ChatGPT)
+        # Lat and Long were added by me
+        self.latitude = latitude
+        self.longitude = longitude
+        self.neighbors = []
+
+
+    def add_neighbor(self, neighbor):
+        if neighbor not in self.neighbors:
+            self.neighbors.append(neighbor)
+
+
+class Graph:
+    def __init__(self):
+        self.vertices = {}
+
+     # default dictionary to store graph (from GeeksForGeeks)
+        self.graph = defaultdict(list)
+
+    def add_vertex(self, vertex):
+        if isinstance(vertex, Vertex) and vertex.id not in self.vertices:
+            self.vertices[vertex.id] = vertex
+            return True
+        else:
+            return False
+
+    def add_edge(self, v1, v2):
+        # Replace underscores with spaces before adding the edge
+        v1 = v1.replace("_", " ")
+        v2 = v2.replace("_", " ")
+        if v1 in self.vertices and v2 in self.vertices:
+            self.vertices[v1].add_neighbor(v2)
+            self.vertices[v2].add_neighbor(v1)
+            return True
+        else:
+            return False
+
+
+    def get_vertices(self):
+        return self.vertices.keys()
+
+
+    def __iter__(self):
+        return iter(self.vertices.values())
+    
+    # The following section comes from GeeksForGeeks
+    # A function to perform a Depth-Limited search
+    # from given source 'src'
+    def DLS(self,src,target,maxDepth):
+
+        if src == target : return True
+
+        # If reached the maximum depth, stop recursing.
+        if maxDepth <= 0 : return False
+
+        # Recur for all the vertices adjacent to this vertex
+        for i in self.graph[src]:
+                if(self.DLS(i,target,maxDepth-1)):
+                    return True
+        return False
+
+    # IDDFS to search if target is reachable from v.
+    # It uses recursive DLS()
+    def IDDFS(self,src, target, maxDepth):
+
+        # Repeatedly depth-limit search till the
+        # maximum depth
+        for i in range(maxDepth):
+            if (self.DLS(src, target, i)):
+                return True
+        return False
+
+The below section was written by me.
+
+# Exit commands list
+exits = ["Quit", "quit", "QUIT", "Exit", "exit", "EXIT"]
+
+# User input and verification
+def get_check_input():
+  city_in = input()
+  city = input_check(city_in)
+  return city
+
+def input_check(city): # modded with assist from ChatGPT
+  if city in exits:
+    return "Exit"
+  else:
+    while city not in city_coor_list['city_name'].values:
+      print("Invalid city.\n")
+      city = input("Enter city name: ")
+      if city in exits:  # This replaced a recursion call
+        return "Exit"
+    return city
+
+
+# Search Functions from GeeksForGeeks
+
+# BFS from given source s
+def bfs(adj, s):
+  
+    # Create a queue for BFS
+    q = deque()
+    
+    # Initially mark all the vertices as not visited
+    # When we push a vertex into the q, we mark it as 
+    # visited
+    visited = [False] * len(adj);
+
+    # Mark the source node as visited and enqueue it
+    visited[s] = True
+    q.append(s)
+
+    # Iterate over the queue
+    while q:
+      
+        # Dequeue a vertex from queue and print it
+        curr = q.popleft()
+        print(curr, end=" ")
+
+        # Get all adjacent vertices of the dequeued 
+        # vertex. If an adjacent has not been visited, 
+        # mark it visited and enqueue it
+        for x in adj[curr]:
+            if not visited[x]:
+                visited[x] = True
+                q.append(x)
+
+
+def dfs_rec(adj, visited, s):
+    # Mark the current vertex as visited
+    visited[s] = True
+
+    # Print the current vertex
+    print(s, end=" ")
+
+    # Recursively visit all adjacent vertices
+    # that are not visited yet
+    for i in adj[s]:
+        if not visited[i]:
+            dfs_rec(adj, visited, i)
+
+
+def dfs(adj, s):
+    visited = [False] * len(adj)
+    # Call the recursive DFS function
+    dfs_rec(adj, visited, s)
+
+
+# Example usage of IDDFS implementation
+# target = 6; maxDepth = 3; src = 0
+
+# if g.IDDFS(src, target, maxDepth) == True:
+  #   print ("Target is reachable from source " +
+    #     "within max depth")
+# else :
+  #   print ("Target is NOT reachable from source " +
+    #     "within max depth")
+
+# Function For Implementing Best First Search
+# Gives output path having lowest cost
+
+
+def best_first_search(actual_Src, target, n):
+	visited = [False] * n
+	pq = PriorityQueue()
+	pq.put((0, actual_Src))
+	visited[actual_Src] = True
+	
+	while pq.empty() == False:
+		u = pq.get()[1]
+		# Displaying the path having lowest cost
+		print(u, end=" ")
+		if u == target:
+			break
+
+		for v, c in graph[u]:
+			if visited[v] == False:
+				visited[v] = True
+				pq.put((c, v))
+	print()
+
+Now I import the data from the csv and txt files.
+
+city_coor_list = pd.read_csv('coordinates.csv')
+print(city_coor_list.shape)
+city_coor_list.head()
+
+# Now I need to iterate through the dataframe object and create
+# vertex class objects for each city in the graph
+graph = Graph()
+for index, row in city_coor_list.iterrows():
+  vertex = Vertex(row['city_name'],row['latitude'],row['longitude'])
+  graph.add_vertex(vertex)
+
+
+# Now I need to import the edge pairs from the .txt file and
+# add them as edges to the graph structure (from ChatGPT)
+
+# Load adjacency pairs from text file
+with open('Adjacencies.txt', 'r') as file:
+    adjacency_data = file.readlines()
+
+# Add edges based on adjacency list
+for line in adjacency_data:
+    cities = line.strip().split()
+    if len(cities) == 2:
+        city1, city2 = cities
+        graph.add_edge(city1, city2)
+
+# Example: print vertices and their neighbors
+for vertex in graph:
+    print(f"City: {vertex.id}; Coordinates: {vertex.latitude},{vertex.longitude}; Neighbors: {vertex.neighbors}")
+
+
+This section is when the start and end cities are input by the user.
+
+def directions():
+  print("Enter the name of the starting city:\n" + "\ttype Quit to exit:\n")
+  city_1 = get_check_input()
+  if city_1 == "Exit":
+    print("Goodbye")
+    farewell = True
+  else:
+    print("You're starting at the city of " + city_1)
+
+  if farewell == False:
+    print("Enter the name of the ending city:\n" + "\ttype Quit to exit:\n")
+    city_2 = get_check_input()
+    if city_2 == "Exit":
+      print("Goodbye")
+      farewell = True
+    else: print("You're ending at the city of " + city_2)
+  else: city_2 = "Exit"
+  return city_1, city_2
+
+def search_method():
+  print("What search method would you like to use?\n\t1)Breadth-First\n\t2)Depth-First\n\t3)Iterative Deepening DFS\n\t4)Best-First\n\t5)A*star")
+  print("6) Choose New Cities")
+  print("Type Quit to exit")
+  choice = input()
+  if choice in exits:
+    print("Goodbye")
+    farewell = True
+  elif choice == "1":
+    print("Breadth-First Search")
+  elif choice == "2":
+    print("Depth-First Search")
+  elif choice == "3":
+    print("Iterative Deepening DFS")
+  elif choice == "4":
+    print("Best-First Search")
+  elif choice == "5":
+    print("A*star")
+  elif choice == "6"
+    print("Choose New Cities")
+  else:
+    print("Invalid choice\nPlease enter a valid choice")
+    choice = input()
+  return choice
+
+From here I will switch to using the NetworkX library to complete the project in a separate notebook.
+
+Just kidding. I have switched back to my original code blocks.
+
+# Here is the initialization of the process.
+
+# farewell = False
+# while farewell == False:
+  # method = "0"
+  # city_1, city_2 = directions()
+  # while != farewell and method != "6":
+    # method = search_method()
